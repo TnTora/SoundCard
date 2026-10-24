@@ -398,7 +398,7 @@ class _CoreAudio:
         aggr_id = _ffi.new("UInt32*")
         status = _ca.AudioHardwareCreateAggregateDevice(aggregate_device_dict, aggr_id)
 
-        _objc.objc_msgSend(NSAutoreleasePool, _objc.sel_registerName(b"release"))
+        _objc.objc_msgSend(pool, _objc.sel_registerName(b"release"))
 
         if status == 0:
             cls.loopback_devices[aggr_id[0]] = tap_id[0]
