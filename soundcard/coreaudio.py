@@ -349,9 +349,16 @@ class _CoreAudio:
     kAudioAggregateDeviceTapAutoStartKey = str_to_CFString("tapautostart")
     kAudioAggregateDeviceIsPrivateKey = str_to_CFString("private")
     kAudioAggregateDevicePropertyTapList = int.from_bytes(b"tap#", byteorder="big")
+    kAudioHardwarePropertyTranslatePIDToProcessObject = int.from_bytes(b"id2p", byteorder="big")
 
     @classmethod
-    def create_loopback_device(cls):
+    def create_loopback_device(cls, processes=None):
+        processes_set = set(processes) if processes else None
+        for device_id, info in cls.loopback_devices.items():
+            if info["processes"] == processes_set:
+                print("Device already exists.")
+                return device_id
+
         # Should avoid leaking memory when using objc
         NSAutoreleasePool = _objc.objc_getClass(b"NSAutoreleasePool")
         pool = _objc.objc_msgSend(NSAutoreleasePool, _objc.sel_registerName(b"alloc"))
@@ -362,19 +369,47 @@ class _CoreAudio:
         YES = _objc.objc_msgSend(NSNumber, _objc.sel_registerName(b"numberWithBool:"), _ffi.cast("bool", True))
         NO = _objc.objc_msgSend(NSNumber, _objc.sel_registerName(b"numberWithBool:"), _ffi.cast("bool", False))
 
-        # Initialize array that contains processes that should not be
-        # captured. Leaving it empty will capture all system audio.
+        # Initialize processes array. Empty if no processes are specified
         NSArray = _objc.objc_getClass(b"NSArray")
-        processes = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
-        processes = _objc.objc_msgSend(processes, _objc.sel_registerName(b"init"))
+        processes_array = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
+        processes_array = _objc.objc_msgSend(processes_array, _objc.sel_registerName(b"init"))
+        device_name = "SystemAudioRecorder"
 
         CATapDescription = _objc.objc_getClass(b"CATapDescription")
         tap_desc = _objc.objc_msgSend(CATapDescription, _objc.sel_registerName(b"alloc"))
-        tap_desc = _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"initStereoGlobalTapButExcludeProcesses:"), processes)
+        # By default record all system audio
+        tap_desc = _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"initStereoGlobalTapButExcludeProcesses:"), processes_array)
         _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setMuteBehavior:"), _ffi.cast("int", 0))
-        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("GlobalTap"))
         _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setPrivate:"), _ffi.cast("bool", True))
-        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setExclusive:"), _ffi.cast("bool", True))
+
+        if processes:
+            # If processes are specified switch tap from exclusive to inclusive
+            # and propulate the processes array with the AudioObjectID obtained from each pid
+
+            for pid in processes:
+                pid_c = _ffi.new("int*", pid)
+                audio_obj_id = cls.get_property(
+                    _cac.kAudioObjectSystemObject,
+                    cls.kAudioHardwarePropertyTranslatePIDToProcessObject,
+                    "AudioObjectID",
+                    qualifier_size=_ffi.sizeof("int"),
+                    qualifier_data=pid_c
+                )
+
+                processes_array = _objc.objc_msgSend(
+                    processes_array, _objc.sel_registerName(b"arrayByAddingObject:"),
+                    _objc.objc_msgSend(NSNumber, _objc.sel_registerName(b"numberWithInt:"), _ffi.cast("int", audio_obj_id[0]))
+                )
+
+            processes_str = "_".join([str(x) for x in processes])
+            device_name += processes_str
+
+            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("ProcessesTap_{}".format(processes_str)))
+            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setExclusive:"), _ffi.cast("bool", False))
+            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setProcesses:"), processes_array)
+        else:
+            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("GlobalTap"))
+            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setExclusive:"), _ffi.cast("bool", True))
 
         tap_id = _ffi.new("UInt32*")
         status = _ca.AudioHardwareCreateProcessTap(tap_desc, tap_id)
@@ -397,7 +432,7 @@ class _CoreAudio:
         uuid_str = _objc.objc_msgSend(uuid_str, _objc.sel_registerName(b"UUIDString"))
 
         aggregate_device_dict = _ca.CFDictionaryCreateMutable(_ffi.NULL, 0, _ffi.NULL, _ffi.NULL)
-        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceNameKey, cls.str_to_CFString("SystemAudioRecorder"))
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceNameKey, cls.str_to_CFString(device_name))
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceUIDKey, uuid_str)
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceTapListKey, taps)
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceTapAutoStartKey, NO)
@@ -409,7 +444,10 @@ class _CoreAudio:
         _objc.objc_msgSend(pool, _objc.sel_registerName(b"release"))
 
         if status == 0:
-            cls.loopback_devices[aggr_id[0]] = tap_id[0]
+            cls.loopback_devices[aggr_id[0]] = {
+                "tap_id": tap_id[0],
+                "processes": set(processes) if processes else None,
+            }
             return aggr_id[0]
         print(f"'AudioHardwareCreateAggregateDevice' Error Status: {status}")
         _ca.AudioHardwareDestroyProcessTap(tap_id[0])
@@ -419,7 +457,7 @@ class _CoreAudio:
         if aggr_id not in cls.loopback_devices:
             return
         _ca.AudioHardwareDestroyAggregateDevice(aggr_id)
-        _ca.AudioHardwareDestroyProcessTap(cls.loopback_devices[aggr_id])
+        _ca.AudioHardwareDestroyProcessTap(cls.loopback_devices[aggr_id]["tap_id"])
         cls.loopback_devices.pop(aggr_id)
 
 
