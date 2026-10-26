@@ -21,17 +21,8 @@ _objc = _ffi.dlopen('objc')
 from soundcard import coreaudioconstants as _cac
 
 
-mac_ver = platform.mac_ver()[0]
-loopback_support = True
-
-try:
-    for mac_v, min_v in zip(mac_ver.split("."), (14, 2), strict=False):
-        if int(mac_v) == min_v:
-            continue
-        loopback_support = int(mac_v) > min_v
-        break
-except ValueError:
-    loopback_support = False
+mac_ver = tuple(int(x) for x in platform.mac_ver()[0].split(".")[:2])
+loopback_support = mac_ver >= (14, 2)
 
 
 def all_speakers():
