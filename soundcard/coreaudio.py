@@ -253,7 +253,7 @@ class _CoreAudio:
     """A helper class for interacting with CoreAudio."""
 
     @staticmethod
-    def get_property(target, selector, ctype, scope=_cac.kAudioObjectPropertyScopeGlobal):
+    def get_property(target, selector, ctype, scope=_cac.kAudioObjectPropertyScopeGlobal, qualifier_size=0, qualifier_data=_ffi.NULL):
         """Get a CoreAudio property.
 
         This might include things like a list of available sound
@@ -279,12 +279,12 @@ class _CoreAudio:
         assert has_prop == 1, 'Core Audio does not have the requested property'
 
         size = _ffi.new("UInt32*")
-        err = _ca.AudioObjectGetPropertyDataSize(target, prop, 0, _ffi.NULL, size)
+        err = _ca.AudioObjectGetPropertyDataSize(target, prop, qualifier_size, qualifier_data, size)
         assert err == 0, "Can't get Core Audio property size"
         num_values = int(size[0]//_ffi.sizeof(ctype))
 
         prop_data = _ffi.new(ctype+'[]', num_values)
-        err = _ca.AudioObjectGetPropertyData(target, prop, 0, _ffi.NULL,
+        err = _ca.AudioObjectGetPropertyData(target, prop, qualifier_size, qualifier_data,
                                              size, prop_data)
         assert err == 0, "Can't get Core Audio property data"
         return prop_data
