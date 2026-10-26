@@ -391,9 +391,14 @@ class _CoreAudio:
         taps = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
         taps = _objc.objc_msgSend(taps, _objc.sel_registerName(b"initWithObjects:"), tap_dict, _ffi.NULL)
 
+        # Generate UUID for Aggregate device to avoid conflicts
+        NSUUID = _objc.objc_getClass(b"NSUUID")
+        uuid_str = _objc.objc_msgSend(NSUUID, _objc.sel_registerName(b"UUID"))
+        uuid_str = _objc.objc_msgSend(uuid_str, _objc.sel_registerName(b"UUIDString"))
+
         aggregate_device_dict = _ca.CFDictionaryCreateMutable(_ffi.NULL, 0, _ffi.NULL, _ffi.NULL)
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceNameKey, cls.str_to_CFString("SystemAudioRecorder"))
-        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceUIDKey, cls.str_to_CFString("com.user.SystemAudioRecorder"))
+        _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceUIDKey, uuid_str)
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceTapListKey, taps)
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceTapAutoStartKey, NO)
         _ca.CFDictionaryAddValue(aggregate_device_dict, cls.kAudioAggregateDeviceIsPrivateKey, YES)
