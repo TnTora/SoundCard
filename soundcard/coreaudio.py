@@ -60,9 +60,11 @@ def all_microphones(include_loopback=False):
     if not loopback_support:
         warnings.warn("macOS version {} does not support loopback recording functionality".format(mac_ver), Warning)
         return mics
-    if not _CoreAudio.loopback_devices:
-        _CoreAudio.create_loopback_device()
-        mics += [_Microphone(id=aggr_id) for aggr_id in _CoreAudio.loopback_devices]
+    if not _CoreAudio.global_loopback_created:
+        aggr_id = _CoreAudio.create_loopback_device()
+        if aggr_id is not None:
+            mics.append(_Microphone(id=aggr_id))
+            _CoreAudio.global_loopback_created = True
     return mics
 
 
@@ -336,6 +338,7 @@ class _CoreAudio:
     # Using objective c classes with objc framework: https://stackoverflow.com/a/1490644
 
     loopback_devices = {}
+    global_loopback_created = False
 
     # CoreAudio/AudioHardware.h
     kAudioSubTapUIDKey = str_to_CFString("uid")
@@ -402,7 +405,7 @@ class _CoreAudio:
 
         if status == 0:
             cls.loopback_devices[aggr_id[0]] = tap_id[0]
-            return
+            return aggr_id[0]
         print(f"'AudioHardwareCreateAggregateDevice' Error Status: {status}")
         _ca.AudioHardwareDestroyProcessTap(tap_id[0])
 
