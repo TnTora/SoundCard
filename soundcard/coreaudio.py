@@ -344,12 +344,6 @@ class _CoreAudio:
 
     @classmethod
     def create_loopback_device(cls, processes=None):
-        processes_set = set(processes) if processes else None
-        for device_id, info in cls.loopback_devices.items():
-            if info["processes"] == processes_set:
-                print("Device already exists.")
-                return device_id
-
         # Should avoid leaking memory when using objc
         NSAutoreleasePool = _objc.objc_getClass(b"NSAutoreleasePool")
         pool = _objc.objc_msgSend(NSAutoreleasePool, _objc.sel_registerName(b"alloc"))
@@ -363,7 +357,6 @@ class _CoreAudio:
         # Initialize processes array. Empty if no processes are specified
         NSArray = _objc.objc_getClass(b"NSArray")
         processes_array = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"array"))
-        device_name = "SystemAudioRecorder"
 
         #Initialize Tap options. By default record all system audio
         CATapDescription = _objc.objc_getClass(b"CATapDescription")
@@ -373,9 +366,15 @@ class _CoreAudio:
         _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setMuteBehavior:"), _ffi.cast("int", 0))
         _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setPrivate:"), _ffi.cast("bool", True))
 
+        device_name = "SystemAudioRecorder"
+        valid_pids = set()
+
         if processes:
             # If processes are specified switch tap from exclusive to inclusive
             # and propulate the processes array with the AudioObjectID obtained from each pid
+
+            device_name += "_Process"
+            processes_str = ""
 
             for pid in processes:
                 pid_c = _ffi.new("int*", pid)
@@ -387,20 +386,37 @@ class _CoreAudio:
                     qualifier_data=pid_c
                 )
 
+                if (not audio_obj_id[0]):
+                    print(f"No AudioObject found for pid {pid}")
+                    continue
+
+                processes_str += f"_{pid}"
+                valid_pids.add(pid)
+
                 processes_array = _objc.objc_msgSend(
                     processes_array, _objc.sel_registerName(b"arrayByAddingObject:"),
                     _objc.objc_msgSend(NSNumber, _objc.sel_registerName(b"numberWithInt:"), _ffi.cast("int", audio_obj_id[0]))
                 )
 
-            processes_str = "_".join([str(x) for x in processes])
+            if not valid_pids:
+                print(f"Failed to create loopback device: no valid AudioObject found for processes {processes}")
+                _objc.objc_msgSend(pool, _objc.sel_registerName(b"release"))
+                return None
+
             device_name += processes_str
 
-            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("ProcessesTap_{}".format(processes_str)))
+            _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("ProcessesTap{}".format(processes_str)))
             _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setExclusive:"), _ffi.cast("bool", False))
             _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setProcesses:"), processes_array)
         else:
             _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setName:"), cls.str_to_CFString("GlobalTap"))
             _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setExclusive:"), _ffi.cast("bool", True))
+
+        for device_id, info in cls.loopback_devices.items():
+            if info["processes"] == valid_pids:
+                print("Device already exists.")
+                _objc.objc_msgSend(pool, _objc.sel_registerName(b"release"))
+                return device_id
 
         tap_id = _ffi.new("UInt32*")
         status = _ca.AudioHardwareCreateProcessTap(tap_desc, tap_id)
@@ -436,7 +452,7 @@ class _CoreAudio:
         if status == 0:
             cls.loopback_devices[aggr_id[0]] = {
                 "tap_id": tap_id[0],
-                "processes": set(processes) if processes else None,
+                "processes": valid_pids,
             }
             return aggr_id[0]
         print(f"'AudioHardwareCreateAggregateDevice' Error Status: {status}")
