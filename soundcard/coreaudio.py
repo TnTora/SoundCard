@@ -362,14 +362,14 @@ class _CoreAudio:
 
         # Initialize processes array. Empty if no processes are specified
         NSArray = _objc.objc_getClass(b"NSArray")
-        processes_array = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
-        processes_array = _objc.objc_msgSend(processes_array, _objc.sel_registerName(b"init"))
+        processes_array = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"array"))
         device_name = "SystemAudioRecorder"
 
+        #Initialize Tap options. By default record all system audio
         CATapDescription = _objc.objc_getClass(b"CATapDescription")
         tap_desc = _objc.objc_msgSend(CATapDescription, _objc.sel_registerName(b"alloc"))
-        # By default record all system audio
         tap_desc = _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"initStereoGlobalTapButExcludeProcesses:"), processes_array)
+        _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"autorelease"))
         _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setMuteBehavior:"), _ffi.cast("int", 0))
         _objc.objc_msgSend(tap_desc, _objc.sel_registerName(b"setPrivate:"), _ffi.cast("bool", True))
 
@@ -414,8 +414,7 @@ class _CoreAudio:
         _ca.CFDictionaryAddValue(tap_dict, cls.kAudioSubTapUIDKey, tap_uid_string)
         _ca.CFDictionaryAddValue(tap_dict, cls.kAudioSubTapDriftCompensationKey, YES)
 
-        taps = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"alloc"))
-        taps = _objc.objc_msgSend(taps, _objc.sel_registerName(b"initWithObjects:"), tap_dict, _ffi.NULL)
+        taps = _objc.objc_msgSend(NSArray, _objc.sel_registerName(b"arrayWithObjects:"), tap_dict, _ffi.NULL)
 
         # Generate UUID for Aggregate device to avoid conflicts
         NSUUID = _objc.objc_getClass(b"NSUUID")
