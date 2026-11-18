@@ -467,6 +467,10 @@ class _CoreAudio:
         cls.loopback_devices.pop(aggr_id)
 
 
+create_loopback_device = _CoreAudio.create_loopback_device
+destroy_loopback_device = _CoreAudio.destroy_loopback_device
+
+
 class _Player:
     """A context manager for an active output stream.
 
