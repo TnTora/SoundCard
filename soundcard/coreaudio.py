@@ -332,13 +332,13 @@ class _CoreAudio:
     global_loopback_created = False
 
     # CoreAudio/AudioHardware.h
-    kAudioSubTapUIDKey = str_to_CFString("uid")
-    kAudioSubTapDriftCompensationKey = str_to_CFString("drift")
-    kAudioAggregateDeviceNameKey = str_to_CFString("name")
-    kAudioAggregateDeviceUIDKey = str_to_CFString("uid")
-    kAudioAggregateDeviceTapListKey = str_to_CFString("taps")
-    kAudioAggregateDeviceTapAutoStartKey = str_to_CFString("tapautostart")
-    kAudioAggregateDeviceIsPrivateKey = str_to_CFString("private")
+    kAudioSubTapUIDKey = str_to_CFString.__func__("uid")
+    kAudioSubTapDriftCompensationKey = str_to_CFString.__func__("drift")
+    kAudioAggregateDeviceNameKey = str_to_CFString.__func__("name")
+    kAudioAggregateDeviceUIDKey = str_to_CFString.__func__("uid")
+    kAudioAggregateDeviceTapListKey = str_to_CFString.__func__("taps")
+    kAudioAggregateDeviceTapAutoStartKey = str_to_CFString.__func__("tapautostart")
+    kAudioAggregateDeviceIsPrivateKey = str_to_CFString.__func__("private")
     kAudioAggregateDevicePropertyTapList = int.from_bytes(b"tap#", byteorder="big")
     kAudioHardwarePropertyTranslatePIDToProcessObject = int.from_bytes(b"id2p", byteorder="big")
 
